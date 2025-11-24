@@ -1,22 +1,25 @@
-# LaunchDarkly Experiment Data Export to S3
+# LaunchDarkly Experiment Data Export to S3 Reference Implementations
 
-A reference implementation showing how to integrate LaunchDarkly experiment evaluation data with AWS S3 using Kinesis Firehose. This ultimately enables real-time streaming of experiment data to your analytics platform.
+Reference implementations showing how to integrate LaunchDarkly experiment evaluation data with AWS S3 using Kinesis Firehose. This enables real-time streaming of experiment data to your analytics platform.
 
-This project includes a simple setup leveraging AWS Firehose to stream data into an S3 bucket. The `setup.sh` file includes bash scripts that can be used to provision the necessary infrastructure in AWS. The resources are meant for reference and as a proof of concept, it's not intended as a production-ready implementation - your AWS instrumentation will likely be different.
-
-**Importing data from the S3 bucket to your analytics platform of choice is not in scope of this project.** That said, a high-level guidance on importing the data to Databricks can be found in `DATABRICKS_INTEGRATION.md`. Note this part was not tested.
+This project includes implementations in **Python** and **PHP**, each demonstrating how to capture experiment evaluation data and stream it to S3 for analytics integration.
 
 ## Overview
 
-- LD SDK is configured with a flag [after_evaluation hook](https://launchdarkly-python-sdk.readthedocs.io/en/latest/api-main.html#module-ldclient.hook)
-- The hook instatiates a FirehoseSender class at application start, a `boto3` client is created
-- When a flag is evaluated, the `boto3` client is used to send data to the selected AWS S3 bucket
+The implementations capture LaunchDarkly experiment evaluation data and stream it to AWS S3 via Kinesis Firehose, enabling integration with analytics platforms like Databricks, Snowflake, BigQuery, or Athena.
+
+### Architecture
 
 ```
-LaunchDarkly SDK → Python Hook → Kinesis Firehose → S3
+LaunchDarkly SDK → [Language-Specific Integration] → Kinesis Firehose → S3
                                                       ↓
                                               [Your Analytics Platform]
 ```
+
+### Implementation Approaches
+
+- **Python**: Uses LaunchDarkly SDK's `after_evaluation` hook to automatically intercept flag evaluations
+- **PHP**: Uses a `VariationDetailAnalyticsWrapper` wrapper class around `variationDetail()` method (following the [mobile SDK pattern](https://gist.github.com/durw4rd/bb08008434ef20ac69b745b1c4b0192a))
 
 ## Prerequisites
 
@@ -27,244 +30,100 @@ LaunchDarkly SDK → Python Hook → Kinesis Firehose → S3
 - **LaunchDarkly Account** with:
   - SDK key
   - Feature flags with experiments enabled
-- **Python 3.9+** with Poetry
+- **Language Requirements**:
+  - Python 3.9+ with Poetry (for Python implementation)
+  - PHP 8.1+ with Composer (for PHP implementation)
 
-## Step-by-step Guide
+## Quick Start
 
-### 1. Define a class that will be used by the flag evaluation hook
+### 1. Set Up AWS Resources
 
-```python
-class FlagEvaluationHook(Hook):
-    def __init__(self):
-        # Initialize Firehose sender
-        try:
-            self.firehose_sender = FirehoseSender()
-            print("Firehose sender initialized successfully")
-        except Exception as e:
-            print(f"Failed to initialize Firehose sender: {e}")
-            self.firehose_sender = None
-    
-    @property
-    def metadata(self) -> Metadata:
-        return Metadata(name="flag-evaluation-hook")
-
-    def after_evaluation(self, evaluation_context, data, evaluation_detail):
-        """
-        Hook method called after every flag evaluation.
-        """
-        # Check if the user is in an experiment looking at the evaluation_detail > reason > inExperiment
-        if (evaluation_detail.reason and 
-            'inExperiment' in evaluation_detail.reason and 
-            evaluation_detail.reason['inExperiment']):
-            
-            # Send experiment event to Firehose
-            if self.firehose_sender:
-                success = self.firehose_sender.send_experiment_event(evaluation_context, evaluation_detail)
-                if success:
-                    print(f"Successfully sent experiment event to Firehose")
-                else:
-                    print(f"Failed to send experiment event to Firehose")
-            else:
-                print(f"Firehose sender not available - skipping event send")
-        else:
-            print(f"User is not in an experiment for flag {evaluation_context.key}")
-        
-        return data
-```
-
-### 2. Add `after_evaluation` hook to your LD SDK config: 
-
-```python
-example_analytics_hook = FlagEvaluationHook()
-ldclient.set_config(Config(sdk_key, hooks=[example_analytics_hook]))
-```
-
-### 3. Send the evaluation details to AWS S3
-
-Inside the FirehoseSender class, initialize the AWS Firehose client (boto3), compose the analytics event, and send it to AWS S3. An example event payload:
-
-```python
-def send_experiment_event(self, evaluation_context, evaluation_detail):
-        """
-        Send experiment evaluation event to Firehose
-        
-        Args:
-            evaluation_context: Contextual information that will be provided to handlers during evaluation series.
-            evaluation_detail: The result of a flag evaluation with information about how it was calculated.
-        """
-        # Prepare the event data
-        event_data = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "flag_key": evaluation_context.key,
-            "evaluation_context": self._extract_context_data(evaluation_context.context),
-            "flag_value": evaluation_detail.value,
-            "variation_index": getattr(evaluation_detail, 'variation_index', None),
-            "reason_kind": evaluation_detail.reason.get('kind') if evaluation_detail.reason else None,
-            "metadata": {
-                "source": "launchdarkly-python-hook",
-                "version": "1.0"
-            }
-        }
-```
-
-For a full working example, check the [firehose_sender file](firehose_sender.py).
-
-## Demo: Testing the Integration
-
-This section shows how to test the integration locally. For production use, integrate the hook code into your existing application.
-
-### Quick Test Setup
+Run the shared setup script from the project root:
 
 ```bash
-git clone <repository-url>
-cd hello-python
-poetry install
-```
-
-### Configure Environment
-
-```bash
-cp env.example .env
-```
-
-Edit `.env` with your credentials:
-
-```bash
-# LaunchDarkly Configuration
-LAUNCHDARKLY_SDK_KEY=your-launchdarkly-sdk-key
-LAUNCHDARKLY_FLAG_KEY=your-feature-flag-key
-
-# AWS Configuration
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-aws-access-key
-AWS_SECRET_ACCESS_KEY=your-aws-secret-key
-AWS_SESSION_TOKEN=your-aws-session-token # Only required when using temporary credentials (such as SSO); leave empty when using permanent IAM user credentials
-
-# Kinesis Firehose Configuration
-FIREHOSE_STREAM_NAME=launchdarkly-experiments-stream
-```
-
-### AWS Authentication Options
-
-**Option 1: Temporary Credentials (SSO, STS, IAM Roles)**
-- Include `AWS_SESSION_TOKEN` in your `.env` file
-- Get credentials from AWS Console or `aws sso login`
-- Credentials expire and need to be refreshed
-
-**Option 2: Permanent IAM User Credentials**
-- Create IAM user with programmatic access
-- Use only `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
-- Leave `AWS_SESSION_TOKEN` empty
-- Credentials don't expire (unless rotated)
-
-### Automated AWS Resource Setup
-
-Use the provided setup script to create all required AWS resources:
-
-```bash
-chmod +x setup.sh
 ./setup.sh
 ```
 
-This creates:
+This script creates:
 - S3 bucket for experiment data
 - IAM role for Firehose with S3 permissions
 - Kinesis Firehose delivery stream with partitioning
 
-### Manual AWS Resource Setup
+**Note**: The setup script is language-agnostic and works for both implementations.
 
-If you prefer to create resources manually or integrate with existing infrastructure:
+### 2. Choose Your Implementation
 
-#### Create S3 Bucket
+- **[Python Implementation](hello-python/README.md)** - Uses SDK hooks for automatic experiment capture
+- **[PHP Implementation](hello-php/README.md)** - Uses wrapper class pattern (coming soon)
+
+### 3. Configure Environment
+
+Each implementation has its own `env.example` file. Copy it to `.env` and fill in your credentials:
+
 ```bash
-aws s3 mb s3://your-launchdarkly-experiments-bucket
+# For Python
+cd hello-python
+cp env.example .env
+
+# For PHP
+cd hello-php
+cp env.example .env
 ```
 
-#### Create IAM Role for Firehose
+Required environment variables:
+- `LAUNCHDARKLY_SDK_KEY` - Your LaunchDarkly SDK key
+- `LAUNCHDARKLY_FLAG_KEY` - Feature flag key to evaluate
+- `AWS_REGION` - AWS region (e.g., us-east-1)
+- `AWS_ACCESS_KEY_ID` - AWS access key
+- `AWS_SECRET_ACCESS_KEY` - AWS secret key
+- `AWS_SESSION_TOKEN` - AWS session token (only for temporary credentials like SSO)
+- `FIREHOSE_STREAM_NAME` - Name of the Firehose stream (default: `launchdarkly-experiments-stream`)
+
+### 4. Run the Implementation
+
+**Python:**
 ```bash
-# Create trust policy
-cat > firehose-trust-policy.json << 'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "firehose.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-EOF
-
-# Create the role
-aws iam create-role \
-  --role-name launchdarkly-firehose-role \
-  --assume-role-policy-document file://firehose-trust-policy.json
-
-# Create S3 access policy
-cat > firehose-s3-policy.json << 'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:AbortMultipartUpload",
-        "s3:GetBucketLocation",
-        "s3:GetObject",
-        "s3:ListBucket",
-        "s3:ListBucketMultipartUploads",
-        "s3:PutObject"
-      ],
-      "Resource": [
-        "arn:aws:s3:::your-launchdarkly-experiments-bucket",
-        "arn:aws:s3:::your-launchdarkly-experiments-bucket/*"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents"
-      ],
-      "Resource": "arn:aws:logs:*:*:log-group:/aws/kinesisfirehose/*"
-    }
-  ]
-}
-EOF
-
-# Attach policy to role
-aws iam put-role-policy \
-  --role-name launchdarkly-firehose-role \
-  --policy-name FirehoseS3Policy \
-  --policy-document file://firehose-s3-policy.json
-```
-
-#### Create Kinesis Firehose Delivery Stream
-```bash
-# Get your account ID
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
-# Create Firehose delivery stream
-aws firehose create-delivery-stream \
-  --delivery-stream-name launchdarkly-experiments-stream \
-  --delivery-stream-type DirectPut \
-  --s3-destination-configuration \
-  "RoleARN=arn:aws:iam::${ACCOUNT_ID}:role/launchdarkly-firehose-role,BucketARN=arn:aws:s3:::your-launchdarkly-experiments-bucket,Prefix=experiments/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/,ErrorOutputPrefix=errors/,BufferingHints={SizeInMBs=1,IntervalInSeconds=60},CompressionFormat=GZIP,EncryptionConfiguration={NoEncryptionConfig=NoEncryption}"
-```
-
-### Test the Integration
-
-```bash
+cd hello-python
+poetry install
 poetry run python main.py
+```
+
+**PHP:**
+```bash
+cd hello-php
+composer install
+php main.php
+```
+
+## Project Structure
+
+```
+.
+├── README.md                    # This file - project overview
+├── setup.sh                     # Shared AWS resource setup script
+├── LICENSE.txt                  # Project license
+├── hello-python/                # Python implementation
+│   ├── README.md               # Python-specific documentation
+│   ├── main.py                 # Main application
+│   ├── firehose_sender.py      # AWS Firehose integration
+│   ├── pyproject.toml          # Python dependencies
+│   ├── env.example             # Environment variable template
+│   └── DATABRICKS_INTEGRATION.md # Databricks integration guide
+└── hello-php/                  # PHP implementation
+    ├── README.md               # PHP-specific documentation
+    ├── main.php                # Main application
+    ├── FirehoseSender.php      # AWS Firehose integration
+    ├── VariationDetailAnalyticsWrapper.php # Wrapper for flag evaluation
+    ├── composer.json           # PHP dependencies
+    └── env.example             # Environment variable template
 ```
 
 ## Data Structure
 
 ### S3 Data Organization
+
+Data is partitioned by `year/month/day/hour` for efficient querying:
+
 ```
 s3://your-bucket/
 ├── experiments/
@@ -272,8 +131,7 @@ s3://your-bucket/
 │   │   ├── month=01/
 │   │   │   ├── day=15/
 │   │   │   │   ├── hour=14/
-│   │   │   │   │   ├── launchdarkly-experiments-stream-1-2024-01-15-14-00-00-abc123.json.gz
-│   │   │   │   │   └── launchdarkly-experiments-stream-1-2024-01-15-14-05-00-def456.json.gz
+│   │   │   │   │   └── launchdarkly-experiments-stream-1-2024-01-15-14-00-00-abc123.json.gz
 │   │   │   │   └── hour=15/
 │   │   │   └── day=16/
 │   │   └── month=02/
@@ -281,16 +139,8 @@ s3://your-bucket/
 │       └── failed-records.json.gz
 ```
 
-**Note**: Data is partitioned by `year/month/day/hour` for efficient querying. The Firehose configuration uses dynamic partitioning: `experiments/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/`
-
-**File Naming**: Files are automatically named by Kinesis Firehose using the pattern: `{stream-name}-{partition}-{timestamp}-{uuid}.gz` where:
-- `stream-name`: Your Firehose delivery stream name (e.g., `launchdarkly-experiments-stream`)
-- `partition`: Partition number (usually 1)
-- `timestamp`: `YYYY-MM-DD-HH-MM-SS` format
-- `uuid`: Unique identifier for the file
-- `.gz`: GZIP compression applied automatically
-
 ### Event Data Schema
+
 Each event contains:
 ```json
 {
@@ -306,23 +156,22 @@ Each event contains:
   "variation_index": 1,
   "reason_kind": "FALLTHROUGH",
   "metadata": {
-    "source": "launchdarkly-python-hook",
+    "source": "launchdarkly-python-hook" or "launchdarkly-php-wrapper",
     "version": "1.0"
   }
 }
 ```
 
-## Next Steps: Analytics Platform Integration
+## Analytics Platform Integration
 
-Once your data is flowing to S3, you'll need to configure your analytics platform to consume it.
+Once your data is flowing to S3, configure your analytics platform to consume it.
 
 ### For Databricks Users
 
-See [DATABRICKS_INTEGRATION.md](DATABRICKS_INTEGRATION.md) for guidance on:
+See [hello-python/DATABRICKS_INTEGRATION.md](hello-python/DATABRICKS_INTEGRATION.md) for guidance on:
 - Auto Loader configuration
-- Sample analysis queries  
+- Sample analysis queries
 - Performance optimization tips
-- Troubleshooting guidance
 
 **Note**: The Databricks integration guide is provided as a starting point and has not been tested. Please verify and adapt the configuration for your environment.
 
@@ -334,25 +183,24 @@ The S3 data is stored in a standard JSON format that can be consumed by:
 - **Athena** - Query directly from S3
 - **Custom applications** - Use AWS SDKs to read the JSON files
 
-## Configuration Options
+## Implementation Details
 
-### Firehose Buffering
-Adjust buffering settings in the Firehose configuration:
-- `SizeInMBs`: Buffer size (1-128 MB)
-- `IntervalInSeconds`: Buffer time (60-900 seconds)
+### Python Implementation
 
-### S3 Partitioning
-The default configuration uses hourly partitioning for optimal query performance. Modify the `Prefix` parameter for different partitioning:
-- **Hourly (Default)**: `experiments/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/`
-- **Daily**: `experiments/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/`
-- **Monthly**: `experiments/year=!{timestamp:yyyy}/month=!{timestamp:MM}/`
+- Uses LaunchDarkly SDK's hook system
+- Automatically captures all flag evaluations
+- See [hello-python/README.md](hello-python/README.md) for details
 
-### Context Parsing
-The integration automatically captures all user-defined context attributes. Internal LaunchDarkly properties are filtered out.
+### PHP Implementation
+
+- Uses wrapper class pattern (similar to mobile SDK integrations)
+- Requires replacing `variationDetail()` calls with wrapper
+- See [hello-php/README.md](hello-php/README.md) for details (coming soon)
 
 ## Monitoring and Troubleshooting
 
 ### Check Data Flow
+
 ```bash
 # Verify S3 data
 aws s3 ls s3://your-launchdarkly-experiments-bucket/experiments/ --recursive
@@ -362,49 +210,17 @@ aws firehose describe-delivery-stream --delivery-stream-name launchdarkly-experi
 ```
 
 ### Common Issues
+
 1. **Expired AWS credentials**: Run `aws sso login` or refresh your credentials
 2. **Permission denied**: Verify IAM role has proper S3 permissions
 3. **Stream not found**: Ensure Firehose delivery stream exists and is active
 4. **Data not appearing**: Check Firehose buffering settings and error logs
 
 ### CloudWatch Monitoring
+
 - Monitor Firehose delivery metrics
 - Set up alarms for failed deliveries
 - Check S3 access logs for data arrival
-
-## Customization
-
-### Adding Custom Context Attributes
-The integration automatically captures any custom attributes in your LaunchDarkly contexts:
-
-```python
-# In your LaunchDarkly context
-context = Context.builder('user-123') \
-  .kind('user') \
-  .name('John Doe') \
-  .set('tier', 'premium') \
-  .set('country', 'US') \
-  .set('subscription_id', 'sub_123') \
-  .build()
-```
-
-All custom attributes will be automatically included in the S3 data.
-
-### Modifying Event Schema
-Edit `firehose_sender.py` to customize the event structure:
-
-```python
-def send_experiment_event(self, evaluation_context, flag):
-    event_data = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "flag_key": evaluation_context.key,
-        "evaluation_context": self._extract_context_data(evaluation_context.context),
-        "flag_value": flag.value,
-        "variation_index": getattr(flag, 'variation_index', None),
-        # Add custom fields here
-        "custom_field": "custom_value"
-    }
-```
 
 ## Security Considerations
 
@@ -423,3 +239,4 @@ def send_experiment_event(self, evaluation_context, flag):
 ## License
 
 This project is licensed under the Apache-2.0 License.
+

@@ -1,11 +1,12 @@
 #!/bin/bash
 
-# LaunchDarkly to Databricks Integration Setup Script
+# LaunchDarkly Experiment Data Export to S3 - AWS Setup Script
 # This script helps set up the AWS resources needed for the integration
+# Can be used by both Python and PHP implementations
 
 set -e
 
-echo "🚀 Setting up LaunchDarkly to Databricks Integration..."
+echo "🚀 Setting up LaunchDarkly Experiment Data Export to S3..."
 
 # Check if AWS CLI is installed
 if ! command -v aws &> /dev/null; then
@@ -109,9 +110,12 @@ rm -f firehose-trust-policy.json firehose-s3-policy.json
 echo "✅ Setup complete!"
 echo ""
 echo "Next steps:"
-echo "1. Copy env.example to .env and fill in your credentials"
-echo "2. Set FIREHOSE_STREAM_NAME=launchdarkly-experiments-stream in .env"
-echo "3. Run: poetry run python main.py"
+echo "1. Navigate to your implementation directory (hello-python/ or hello-php/)"
+echo "2. Copy env.example to .env and fill in your credentials"
+echo "3. Set FIREHOSE_STREAM_NAME=launchdarkly-experiments-stream in .env"
+echo "4. Run your implementation:"
+echo "   - Python: cd hello-python && poetry run python main.py"
+echo "   - PHP: cd hello-php && php main.php"
 echo ""
 echo "AWS Authentication Options:"
 echo "- Option 1: Use your current SSO credentials (include AWS_SESSION_TOKEN)"
@@ -120,3 +124,4 @@ echo ""
 echo "Your S3 bucket: s3://$BUCKET_NAME"
 echo "Your Firehose stream: launchdarkly-experiments-stream"
 echo "Your AWS region: $AWS_REGION"
+
