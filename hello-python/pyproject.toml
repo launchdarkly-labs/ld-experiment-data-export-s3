@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "main"
+version = "0.1.0"
+description = "Hello LaunchDarkly for Python"
+authors = ["LaunchDarkly <dev@launchdarkly.com>"]
+license = "Apache-2.0"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+launchdarkly-server-sdk = ">=9.0.0"
+halo = ">=0.0.3"
+python-dotenv = "^1.1.1"
+boto3 = "^1.40.21"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
