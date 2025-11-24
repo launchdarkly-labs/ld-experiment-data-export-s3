@@ -2,6 +2,8 @@
 
 This guide provides general guidance for integrating LaunchDarkly experiment data with Databricks using Auto Loader.
 
+**Note**: This guide applies to data from both Python and PHP implementations, as they produce the same S3 data format. The examples use PySpark (Python) because that's what Databricks uses, but the data structure is identical regardless of which SDK implementation you use.
+
 ## Important Note
 
 This integration guide is provided as a starting point and has not been tested in a live Databricks environment. Please test thoroughly and adapt the queries to your specific setup before using in production.
@@ -28,7 +30,7 @@ Each JSON file contains one experiment event per line with this schema:
   "variation_index": 1,
   "reason_kind": "FALLTHROUGH",
   "metadata": {
-    "source": "launchdarkly-python-hook",
+    "source": "launchdarkly-python-hook" or "launchdarkly-php-wrapper",
     "version": "1.0"
   }
 }

@@ -54,7 +54,7 @@ This script creates:
 ### 2. Choose Your Implementation
 
 - **[Python Implementation](hello-python/README.md)** - Uses SDK hooks for automatic experiment capture
-- **[PHP Implementation](hello-php/README.md)** - Uses wrapper class pattern (coming soon)
+- **[PHP Implementation](hello-php/README.md)** - Uses wrapper class pattern
 
 ### 3. Configure Environment
 
@@ -102,20 +102,21 @@ php main.php
 ├── README.md                    # This file - project overview
 ├── setup.sh                     # Shared AWS resource setup script
 ├── LICENSE.txt                  # Project license
+├── DATABRICKS_INTEGRATION.md   # Databricks integration guide (applies to both implementations)
 ├── hello-python/                # Python implementation
 │   ├── README.md               # Python-specific documentation
 │   ├── main.py                 # Main application
 │   ├── firehose_sender.py      # AWS Firehose integration
 │   ├── pyproject.toml          # Python dependencies
-│   ├── env.example             # Environment variable template
-│   └── DATABRICKS_INTEGRATION.md # Databricks integration guide
+│   └── env.example             # Environment variable template
 └── hello-php/                  # PHP implementation
     ├── README.md               # PHP-specific documentation
-    ├── main.php                # Main application
-    ├── FirehoseSender.php      # AWS Firehose integration
-    ├── VariationDetailAnalyticsWrapper.php # Wrapper for flag evaluation
+    ├── main.php                # Example application
     ├── composer.json           # PHP dependencies
-    └── env.example             # Environment variable template
+    ├── env.example             # Environment variable template
+    └── src/
+        ├── FirehoseSender.php  # AWS Firehose integration
+        └── VariationDetailAnalyticsWrapper.php # Wrapper for flag evaluation
 ```
 
 ## Data Structure
@@ -168,12 +169,12 @@ Once your data is flowing to S3, configure your analytics platform to consume it
 
 ### For Databricks Users
 
-See [hello-python/DATABRICKS_INTEGRATION.md](hello-python/DATABRICKS_INTEGRATION.md) for guidance on:
+See [DATABRICKS_INTEGRATION.md](DATABRICKS_INTEGRATION.md) for guidance on:
 - Auto Loader configuration
 - Sample analysis queries
 - Performance optimization tips
 
-**Note**: The Databricks integration guide is provided as a starting point and has not been tested. Please verify and adapt the configuration for your environment.
+**Note**: The Databricks integration guide is provided as a starting point and has not been tested. Please verify and adapt the configuration for your environment. This guide applies to data from both Python and PHP implementations since they produce the same S3 data format.
 
 ### For Other Platforms
 
@@ -195,7 +196,7 @@ The S3 data is stored in a standard JSON format that can be consumed by:
 
 - Uses wrapper class pattern (similar to mobile SDK integrations)
 - Requires replacing `variationDetail()` calls with wrapper
-- See [hello-php/README.md](hello-php/README.md) for details (coming soon)
+- See [hello-php/README.md](hello-php/README.md) for details
 
 ## Monitoring and Troubleshooting
 

@@ -165,11 +165,12 @@ Use the provided setup script at the project root to create all required AWS res
 
 ```bash
 # From the project root directory
+cd ..
 chmod +x setup.sh
 ./setup.sh
 ```
 
-**Note**: The setup script is shared between Python and PHP implementations and is located at the project root.
+**Note**: The setup script is shared between Python and PHP implementations and is located at the project root (`../setup.sh` from this directory).
 
 This creates:
 - S3 bucket for experiment data
@@ -323,13 +324,13 @@ Once your data is flowing to S3, you'll need to configure your analytics platfor
 
 ### For Databricks Users
 
-See [DATABRICKS_INTEGRATION.md](DATABRICKS_INTEGRATION.md) for guidance on:
+See [../DATABRICKS_INTEGRATION.md](../DATABRICKS_INTEGRATION.md) for guidance on:
 - Auto Loader configuration
 - Sample analysis queries  
 - Performance optimization tips
 - Troubleshooting guidance
 
-**Note**: The Databricks integration guide is provided as a starting point and has not been tested. Please verify and adapt the configuration for your environment.
+**Note**: The Databricks integration guide is provided as a starting point and has not been tested. Please verify and adapt the configuration for your environment. This guide applies to data from both Python and PHP implementations since they produce the same S3 data format.
 
 ### For Other Platforms
 
