@@ -16,8 +16,8 @@ This project includes a simple setup leveraging AWS Firehose to stream data into
 
 ```
 LaunchDarkly SDK → Python Hook → Kinesis Firehose → S3
-                                                      ↓
-                                              [Your Analytics Platform]
+                                                                    ↓
+                                                        [Your Analytics Platform]
 ```
 
 ## Prerequisites
@@ -129,140 +129,11 @@ poetry install
 cp env.example .env
 ```
 
-Edit `.env` with your credentials:
-
-```bash
-# LaunchDarkly Configuration
-LAUNCHDARKLY_SDK_KEY=your-launchdarkly-sdk-key
-LAUNCHDARKLY_FLAG_KEY=your-feature-flag-key
-
-# AWS Configuration
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-aws-access-key
-AWS_SECRET_ACCESS_KEY=your-aws-secret-key
-AWS_SESSION_TOKEN=your-aws-session-token # Only required when using temporary credentials (such as SSO); leave empty when using permanent IAM user credentials
-
-# Kinesis Firehose Configuration
-FIREHOSE_STREAM_NAME=launchdarkly-experiments-stream
-```
-
-### AWS Authentication Options
-
-**Option 1: Temporary Credentials (SSO, STS, IAM Roles)**
-- Include `AWS_SESSION_TOKEN` in your `.env` file
-- Get credentials from AWS Console or `aws sso login`
-- Credentials expire and need to be refreshed
-
-**Option 2: Permanent IAM User Credentials**
-- Create IAM user with programmatic access
-- Use only `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
-- Leave `AWS_SESSION_TOKEN` empty
-- Credentials don't expire (unless rotated)
-
-### Automated AWS Resource Setup
-
-Use the provided setup script at the project root to create all required AWS resources:
-
-```bash
-# From the project root directory
-cd ..
-chmod +x setup.sh
-./setup.sh
-```
-
-**Note**: The setup script is shared between Python and PHP implementations and is located at the project root (`../setup.sh` from this directory).
-
-This creates:
-- S3 bucket for experiment data
-- IAM role for Firehose with S3 permissions
-- Kinesis Firehose delivery stream with partitioning
-
-### Manual AWS Resource Setup
-
-If you prefer to create resources manually or integrate with existing infrastructure:
-
-#### Create S3 Bucket
-```bash
-aws s3 mb s3://your-launchdarkly-experiments-bucket
-```
-
-#### Create IAM Role for Firehose
-```bash
-# Create trust policy
-cat > firehose-trust-policy.json << 'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "firehose.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-EOF
-
-# Create the role
-aws iam create-role \
-  --role-name launchdarkly-firehose-role \
-  --assume-role-policy-document file://firehose-trust-policy.json
-
-# Create S3 access policy
-cat > firehose-s3-policy.json << 'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:AbortMultipartUpload",
-        "s3:GetBucketLocation",
-        "s3:GetObject",
-        "s3:ListBucket",
-        "s3:ListBucketMultipartUploads",
-        "s3:PutObject"
-      ],
-      "Resource": [
-        "arn:aws:s3:::your-launchdarkly-experiments-bucket",
-        "arn:aws:s3:::your-launchdarkly-experiments-bucket/*"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents"
-      ],
-      "Resource": "arn:aws:logs:*:*:log-group:/aws/kinesisfirehose/*"
-    }
-  ]
-}
-EOF
-
-# Attach policy to role
-aws iam put-role-policy \
-  --role-name launchdarkly-firehose-role \
-  --policy-name FirehoseS3Policy \
-  --policy-document file://firehose-s3-policy.json
-```
-
-#### Create Kinesis Firehose Delivery Stream
-```bash
-# Get your account ID
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
-# Create Firehose delivery stream
-aws firehose create-delivery-stream \
-  --delivery-stream-name launchdarkly-experiments-stream \
-  --delivery-stream-type DirectPut \
-  --s3-destination-configuration \
-  "RoleARN=arn:aws:iam::${ACCOUNT_ID}:role/launchdarkly-firehose-role,BucketARN=arn:aws:s3:::your-launchdarkly-experiments-bucket,Prefix=experiments/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/,ErrorOutputPrefix=errors/,BufferingHints={SizeInMBs=1,IntervalInSeconds=60},CompressionFormat=GZIP,EncryptionConfiguration={NoEncryptionConfig=NoEncryption}"
-```
+Edit `.env` with your credentials. See the [root README.md](../README.md#3-configure-environment) for required environment variables and AWS authentication options.
 
 ### Test the Integration
+
+**Note**: For AWS resource setup and authentication options, see the [root README.md](../README.md#1-set-up-aws-resources).
 
 ```bash
 poetry run python main.py

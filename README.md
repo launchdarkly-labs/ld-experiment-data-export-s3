@@ -19,7 +19,7 @@ LaunchDarkly SDK → [Language-Specific Integration] → Kinesis Firehose → S3
 ### Implementation Approaches
 
 - **Python**: Uses LaunchDarkly SDK's `after_evaluation` hook to automatically intercept flag evaluations
-- **PHP**: Uses a `VariationDetailAnalyticsWrapper` wrapper class around `variationDetail()` method (following the [mobile SDK pattern](https://gist.github.com/durw4rd/bb08008434ef20ac69b745b1c4b0192a))
+- **PHP**: Uses a `VariationDetailAnalyticsWrapper` wrapper class around `variationDetail()` method.
 
 ## Prerequisites
 
@@ -38,18 +38,125 @@ LaunchDarkly SDK → [Language-Specific Integration] → Kinesis Firehose → S3
 
 ### 1. Set Up AWS Resources
 
+This integration requires the following AWS resources:
+
+- **S3 Bucket**: Stores experiment data with hourly partitioning (`experiments/year=YYYY/month=MM/day=DD/hour=HH/`)
+- **IAM Role**: Allows Kinesis Firehose to write to the S3 bucket
+- **Kinesis Firehose Delivery Stream**: Streams experiment events from your application to S3
+
+You can create these resources in two ways:
+
+#### Option A: Automated Setup (Recommended)
+
 Run the shared setup script from the project root:
 
 ```bash
+# First, ensure AWS CLI is configured with your credentials
+aws configure
+# OR if using SSO:
+aws sso login
+
+# Then run the setup script
 ./setup.sh
 ```
 
-This script creates:
-- S3 bucket for experiment data
-- IAM role for Firehose with S3 permissions
-- Kinesis Firehose delivery stream with partitioning
+**Important**: The `setup.sh` script uses AWS CLI credentials (configured via `aws configure` or `aws sso login`), **not** the `.env` file. The `.env` file is only used later by your application code to send data to Firehose.
 
-**Note**: The setup script is language-agnostic and works for both implementations.
+The script will:
+- Prompt you for an S3 bucket name and AWS region
+- Create the S3 bucket
+- Create an IAM role (`launchdarkly-firehose-role`) with S3 write permissions
+- Create a Kinesis Firehose delivery stream (`launchdarkly-experiments-stream`)
+
+#### Option B: Manual Setup
+
+If you prefer to create resources manually or integrate with existing infrastructure:
+
+##### Create S3 Bucket
+```bash
+aws s3 mb s3://your-launchdarkly-experiments-bucket
+```
+
+##### Create IAM Role for Firehose
+```bash
+# Create trust policy
+cat > firehose-trust-policy.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "firehose.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+
+# Create the role
+aws iam create-role \
+  --role-name launchdarkly-firehose-role \
+  --assume-role-policy-document file://firehose-trust-policy.json
+
+# Create S3 access policy
+cat > firehose-s3-policy.json << EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:AbortMultipartUpload",
+        "s3:GetBucketLocation",
+        "s3:GetObject",
+        "s3:ListBucket",
+        "s3:ListBucketMultipartUploads",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::your-launchdarkly-experiments-bucket",
+        "arn:aws:s3:::your-launchdarkly-experiments-bucket/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:*:*:log-group:/aws/kinesisfirehose/*"
+    }
+  ]
+}
+EOF
+
+# Attach policy to role
+aws iam put-role-policy \
+  --role-name launchdarkly-firehose-role \
+  --policy-name FirehoseS3Policy \
+  --policy-document file://firehose-s3-policy.json
+
+# Clean up temporary files
+rm -f firehose-trust-policy.json firehose-s3-policy.json
+```
+
+##### Create Kinesis Firehose Delivery Stream
+```bash
+# Get your account ID
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+# Create Firehose delivery stream
+aws firehose create-delivery-stream \
+  --delivery-stream-name launchdarkly-experiments-stream \
+  --delivery-stream-type DirectPut \
+  --s3-destination-configuration \
+  "RoleARN=arn:aws:iam::${ACCOUNT_ID}:role/launchdarkly-firehose-role,BucketARN=arn:aws:s3:::your-launchdarkly-experiments-bucket,Prefix=experiments/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/,ErrorOutputPrefix=errors/,BufferingHints={SizeInMBs=1,IntervalInSeconds=60},CompressionFormat=GZIP,EncryptionConfiguration={NoEncryptionConfig=NoEncryption}"
+```
+
+**Note**: The setup script is language-agnostic and works for both implementations. You can also use AWS Console, CloudFormation, or Terraform to create these resources with the same specifications.
 
 ### 2. Choose Your Implementation
 
@@ -73,11 +180,38 @@ cp env.example .env
 Required environment variables:
 - `LAUNCHDARKLY_SDK_KEY` - Your LaunchDarkly SDK key
 - `LAUNCHDARKLY_FLAG_KEY` - Feature flag key to evaluate
-- `AWS_REGION` - AWS region (e.g., us-east-1)
-- `AWS_ACCESS_KEY_ID` - AWS access key
+- `AWS_REGION` - AWS region (e.g., us-east-1) - must match the region where you created resources
+- `AWS_ACCESS_KEY_ID` - AWS access key (for your application to send data to Firehose)
 - `AWS_SECRET_ACCESS_KEY` - AWS secret key
-- `AWS_SESSION_TOKEN` - AWS session token (only for temporary credentials like SSO)
+- `AWS_SESSION_TOKEN` - AWS session token (see AWS Authentication Options below)
 - `FIREHOSE_STREAM_NAME` - Name of the Firehose stream (default: `launchdarkly-experiments-stream`)
+
+**Note**: These credentials are used by your application code to send data to Firehose. They can be the same credentials you used for `setup.sh`, or different credentials with appropriate permissions (Firehose `PutRecord` permission).
+
+### AWS Authentication Options
+
+**Option 1: Temporary Credentials (SSO, STS, IAM Roles) - Development/Testing Only**
+
+- Include `AWS_SESSION_TOKEN` in your `.env` file
+- Get credentials from AWS Console or `aws sso login`
+- Credentials expire and need to be refreshed regularly
+- Suitable for local development and testing only
+
+**Option 2: Permanent IAM User Credentials**
+
+- Create IAM user with programmatic access
+- Use only `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
+- Leave `AWS_SESSION_TOKEN` empty
+- Credentials don't expire (unless rotated)
+- Use IAM roles (e.g., EC2 instance roles, ECS task roles) for even better security in production
+
+**Option 3: IAM Roles (Best for Production)**
+
+- Use IAM roles attached to your compute resources (EC2 instance roles, ECS task roles, Lambda execution roles)
+- No credentials to manage or rotate
+- Automatic credential rotation
+- Most secure option for production deployments
+- AWS SDK automatically uses the role credentials - no need to set `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` in `.env`
 
 ### 4. Run the Implementation
 

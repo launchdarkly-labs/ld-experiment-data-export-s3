@@ -13,8 +13,8 @@ A reference implementation showing how to integrate LaunchDarkly experiment eval
 
 ```
 LaunchDarkly SDK → PHP Wrapper → Kinesis Firehose → S3
-                                                  ↓
-                                          [Your Analytics Platform]
+                                                       ↓
+                                           [Your Analytics Platform]
 ```
 
 ## Prerequisites
@@ -32,19 +32,7 @@ LaunchDarkly SDK → PHP Wrapper → Kinesis Firehose → S3
 
 ### 1. Set Up AWS Resources
 
-Run the shared setup script from the project root:
-
-```bash
-# From the project root directory
-./setup.sh
-```
-
-This creates:
-- S3 bucket for experiment data
-- IAM role for Firehose with S3 permissions
-- Kinesis Firehose delivery stream with partitioning
-
-**Note**: The setup script is shared between Python and PHP implementations and is located at the project root.
+**Note**: For detailed AWS resource setup instructions (automated and manual), see the [root README.md](../README.md#1-set-up-aws-resources). The setup instructions are shared between Python and PHP implementations.
 
 ### 2. Install Dependencies
 
@@ -59,22 +47,7 @@ composer install
 cp env.example .env
 ```
 
-Edit `.env` with your credentials:
-
-```env
-# LaunchDarkly Configuration
-LAUNCHDARKLY_SDK_KEY=your-launchdarkly-sdk-key
-LAUNCHDARKLY_FLAG_KEY=your-feature-flag-key
-
-# AWS Configuration
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-aws-access-key
-AWS_SECRET_ACCESS_KEY=your-aws-secret-key
-AWS_SESSION_TOKEN=your-aws-session-token # Only required when using temporary credentials (such as SSO); leave empty when using permanent IAM user credentials
-
-# Kinesis Firehose Configuration
-FIREHOSE_STREAM_NAME=launchdarkly-experiments-stream
-```
+Edit `.env` with your credentials. See the [root README.md](../README.md#3-configure-environment) for required environment variables and AWS authentication options.
 
 ### 4. Test the Integration
 
@@ -206,19 +179,6 @@ hello-php/
     ├── FirehoseSender.php             # AWS Firehose integration
     └── VariationDetailAnalyticsWrapper.php  # Wrapper class
 ```
-
-## AWS Authentication Options
-
-**Option 1: Temporary Credentials (SSO, STS, IAM Roles)**
-- Include `AWS_SESSION_TOKEN` in your `.env` file
-- Get credentials from AWS Console or `aws sso login`
-- Credentials expire and need to be refreshed
-
-**Option 2: Permanent IAM User Credentials**
-- Create IAM user with programmatic access
-- Use only `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
-- Leave `AWS_SESSION_TOKEN` empty
-- Credentials don't expire (unless rotated)
 
 ## Data Structure
 
