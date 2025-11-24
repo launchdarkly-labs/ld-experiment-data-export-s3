@@ -66,38 +66,51 @@ class FirehoseSender
         $contextData['key'] = $context->getKey();
         $contextData['kind'] = $context->getKind();
 
-        // Get the context as JSON to access user-defined attributes
+        // Get name if available
+        $name = $context->getName();
+        if ($name !== null) {
+            $contextData['name'] = $name;
+        }
+
+        // Get all custom attribute names and their values
         try {
-            // Convert context to JSON then decode to array
-            $contextJson = $context->toJSON();
-            $contextArray = json_decode($contextJson, true);
-
-            if (is_array($contextArray)) {
-                // Only include user-defined attributes (exclude internal LD properties)
-                $internalProps = [
-                    'privateAttributes',
-                    'private_attributes',
-                    'DEFAULT_KIND',
-                    'MULTI_KIND',
-                    'error',
-                    'fullyQualifiedKey',
-                    'fully_qualified_key',
-                    'individualContextCount',
-                    'individual_context_count',
-                    'multiple',
-                    'valid',
-                ];
-
-                foreach ($contextArray as $attrName => $value) {
-                    if (!in_array($attrName, $internalProps) && $this->isJsonSerializable($value)) {
-                        $contextData[$attrName] = $value;
-                    }
+            $customAttributeNames = $context->getCustomAttributeNames();
+            foreach ($customAttributeNames as $attrName) {
+                $value = $context->get($attrName);
+                if ($value !== null && $this->isJsonSerializable($value)) {
+                    $contextData[$attrName] = $value;
                 }
             }
         } catch (Exception $e) {
-            // Fallback: try to get name if available
-            if (method_exists($context, 'getName') && $context->getName()) {
-                $contextData['name'] = $context->getName();
+            // If getCustomAttributeNames fails, try using jsonSerialize
+            try {
+                $jsonData = json_decode(json_encode($context->jsonSerialize()), true);
+                if (is_array($jsonData)) {
+                    // Only include user-defined attributes (exclude internal LD properties)
+                    $internalProps = [
+                        'privateAttributes',
+                        'private_attributes',
+                        'DEFAULT_KIND',
+                        'MULTI_KIND',
+                        'error',
+                        'fullyQualifiedKey',
+                        'fully_qualified_key',
+                        'individualContextCount',
+                        'individual_context_count',
+                        'multiple',
+                        'valid',
+                    ];
+
+                    foreach ($jsonData as $attrName => $value) {
+                        if (!in_array($attrName, $internalProps) && 
+                            !isset($contextData[$attrName]) && 
+                            $this->isJsonSerializable($value)) {
+                            $contextData[$attrName] = $value;
+                        }
+                    }
+                }
+            } catch (Exception $e2) {
+                // If all else fails, just return basic attributes
             }
         }
 
@@ -225,10 +238,8 @@ class FirehoseSender
     private function getReasonKind($evaluationDetail): ?string
     {
         $reason = $evaluationDetail->getReason();
-        if (is_array($reason) && isset($reason['kind'])) {
-            return $reason['kind'];
-        }
-        return null;
+        // EvaluationReason object has getKind() method
+        return $reason->getKind();
     }
 }
 

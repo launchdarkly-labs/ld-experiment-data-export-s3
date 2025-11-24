@@ -65,12 +65,8 @@ class VariationDetailAnalyticsWrapper
     ): void {
         // Check if the user is in an experiment by looking at the reason
         $reason = $evaluationDetail->getReason();
-        $inExperiment = false;
-
-        if (is_array($reason)) {
-            // Check if 'inExperiment' key exists and is true
-            $inExperiment = isset($reason['inExperiment']) && $reason['inExperiment'] === true;
-        }
+        // EvaluationReason object has isInExperiment() method
+        $inExperiment = $reason->isInExperiment();
 
         // Only send to analytics if in an experiment and Firehose sender is available
         if ($inExperiment && $this->firehoseSender !== null) {

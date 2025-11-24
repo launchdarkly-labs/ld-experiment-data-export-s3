@@ -72,13 +72,12 @@ echo "Flag value: " . json_encode($evaluationDetail->getValue()) . "\n";
 echo "Variation index: " . ($evaluationDetail->getVariationIndex() ?? 'N/A') . "\n";
 
 $reason = $evaluationDetail->getReason();
-if (is_array($reason)) {
-    echo "Reason kind: " . ($reason['kind'] ?? 'N/A') . "\n";
-    if (isset($reason['inExperiment']) && $reason['inExperiment']) {
-        echo "In experiment: Yes\n";
-    } else {
-        echo "In experiment: No\n";
-    }
+// EvaluationReason object has getKind() and isInExperiment() methods
+echo "Reason kind: " . $reason->getKind() . "\n";
+if ($reason->isInExperiment()) {
+    echo "In experiment: Yes\n";
+} else {
+    echo "In experiment: No\n";
 }
 
 echo "\n";
